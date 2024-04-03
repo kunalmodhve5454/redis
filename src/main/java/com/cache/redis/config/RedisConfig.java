@@ -1,64 +1,48 @@
 package com.cache.redis.config;
 
-import io.lettuce.core.ClientOptions;
-import io.lettuce.core.resource.ClientResources;
-import io.lettuce.core.resource.DefaultClientResources;
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import io.lettuce.core.ReadFrom;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.redis.connection.RedisClusterConfiguration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
-import org.springframework.data.redis.connection.lettuce.LettucePoolingClientConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
 
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+
+@Configuration
+@EnableCaching
 public class RedisConfig {
 
-    @Value("${redis.host}")
-    private String redisHost;
+    @Value("${redis.nodes}")
+    private String[] redisNodes;
 
-    @Value("${redis.port}")
-    private int redisPort;
-
-    @Autowired
-    GenericObjectPoolConfig genericObjectPoolConfig;
-
-
-    @Bean(destroyMethod = "shutdown")
-    ClientResources clientResources() {
-        return DefaultClientResources.create();
-    }
 
     @Bean
-    public RedisStandaloneConfiguration redisStandaloneConfiguration() {
-        return new RedisStandaloneConfiguration(redisHost, redisPort);
-    }
-
-    @Bean
-    public ClientOptions clientOptions(){
-        return ClientOptions.builder()
-                .disconnectedBehavior(ClientOptions.DisconnectedBehavior.REJECT_COMMANDS)
-                .autoReconnect(true)
+    LettuceConnectionFactory redisConnectionFactory(RedisClusterConfiguration redisConfiguration) {
+        LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
+                .readFrom(ReadFrom.REPLICA_PREFERRED)
+                .commandTimeout(Duration.ofSeconds(120))
                 .build();
+        return new LettuceConnectionFactory(redisConfiguration, clientConfig);
     }
 
     @Bean
-    LettucePoolingClientConfiguration lettucePoolConfig(ClientOptions options, ClientResources dcr){
-        return LettucePoolingClientConfiguration.builder()
-                .poolConfig(genericObjectPoolConfig)
-                .clientOptions(options)
-                .clientResources(dcr)
-                .build();
+    RedisClusterConfiguration redisConfiguration() {
+        List<String> clusterNodes = Arrays.asList(redisNodes);
+        RedisClusterConfiguration redisClusterConfiguration = new RedisClusterConfiguration(clusterNodes);
+        redisClusterConfiguration.setMaxRedirects(5);
+        return redisClusterConfiguration;
     }
 
-    @Bean
-    public RedisConnectionFactory connectionFactory(RedisStandaloneConfiguration redisStandaloneConfiguration,
-                                                    LettucePoolingClientConfiguration lettucePoolConfig) {
-        return new LettuceConnectionFactory(redisStandaloneConfiguration, lettucePoolConfig);
-    }
 
     @Bean
     @ConditionalOnMissingBean(name = "redisTemplate")
